@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Wireless Scanner</title>
+  <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
+  <style>
+    :root {
+      --primary: #4F46E5;
+      --success: #10B981;
+      --bg: #F3F4F6;
+    }
+    body {
+      margin: 0; padding: 0;
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background-color: var(--bg);
+      display: flex; flex-direction: column;
+      height: 100vh;
+      overflow: hidden;
+    }
+    header {
+      background: var(--primary);
+      color: white;
+      padding: 15px;
+      text-align: center;
+      font-size: 1.2rem;
+      font-weight: bold;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    #scanner-container {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+    #reader {
+      width: 100%;
+      max-width: 400px;
+      border: 4px solid var(--primary);
+      border-radius: 12px;
+      overflow: hidden;
+      box-shadow: 0 4px 10px rgba(0,0,0,0.15);
+      background: black;
+    }
+    .status-panel {
+      margin-top: 20px;
+      padding: 15px;
+      background: white;
+      border-radius: 8px;
+      width: 100%;
+      max-width: 370px;
+      text-align: center;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+    }
+    #status-text {
+      font-size: 1.2rem;
+      font-weight: bold;
+      color: var(--primary);
+      margin-bottom: 5px;
+    }
+    #status-subtext {
+      font-size: 0.9rem;
+      color: #6B7280;
+    }
+    #overlay {
+      position: absolute;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(255,255,255,0.9);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      z-index: 1000;
+    }
+    .btn {
+      padding: 12px 24px;
+      background: var(--primary);
+      color: white;
+      border: none;
+      border-radius: 6px;
+      font-size: 1.1rem;
+      font-weight: bold;
+      cursor: pointer;
+      margin-top: 20px;
+    }
+  </style>
+</head>
+<body>
+
+  <header id="header-title">Wireless Pair Scanner</header>
+
+  <div id="overlay">
+    <h2>Welcome!</h2>
+    <p style="text-align:center; padding:0 20px; color:#4B5563;">
+      To begin, tap Start and point your camera at the <b>QR Code</b> on your PC screen.
+    </p>
+    <button class="btn" onclick="startCamera()">Start Camera</button>
+  </div>
+
+  <div id="scanner-container">
+    <div id="reader"></div>
+    
+    <div class="status-panel">
+      <div id="status-text">Step 1: Pair Device</div>
+      <div id="status-subtext">Scan the QR code on your computer monitor</div>
+    </div>
+  </div>
+
+  <script>
+    let html5QrcodeScanner = null;
+    let isPaired = false;
+    let webAppUrl = "";
+    let linkId = "";
+    let isProcessing = false;
+
+    // Beep sounds
+    const AudioContext = window.AudioContext || window.webkitAudioContext;
+    const audioCtx = new AudioContext();
+
+    function playBeep(type) {
+      if(audioCtx.state === 'suspended') audioCtx.resume();
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+      
+      if (type === 'success') {
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(800, audioCtx.currentTime);
+        osc.frequency.exponentialRampToValueAtTime(1200, audioCtx.currentTime + 0.1);
+        gain.gain.setValueAtTime(1, audioCtx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.1);
+        osc.start(); osc.stop(audioCtx.currentTime + 0.1);
+      } else if (type === 'error') {
+        osc.type = 'square';
+        osc.frequency.setValueAtTime(300, audioCtx.currentTime);
+        gain.gain.setValueAtTime(1, audioCtx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.2);
+        osc.start(); osc.stop(audioCtx.currentTime + 0.2);
+      }
+    }
+
+    function startCamera() {
+      if(audioCtx.state === 'suspended') audioCtx.resume(); // Unlock audio context
+      document.getElementById('overlay').style.display = 'none';
+      
+      html5QrcodeScanner = new Html5Qrcode("reader");
+      
+      const config = { fps: 10, qrbox: { width: 250, height: 100 } };
+      // Make qrbox square if pairing, rectangular if scanning barcodes
+      const pairConfig = { fps: 10, qrbox: { width: 200, height: 200 } };
+      
+      html5QrcodeScanner.start({ facingMode: "environment" }, pairConfig, onScanSuccess)
+        .catch(err => {
+          alert("Camera Error: Please ensure you grant camera permissions.");
+          console.error(err);
+        });
+    }
+
+    function onScanSuccess(decodedText) {
+      if (isProcessing) return;
+      
+      if (!isPaired) {
+        // Looking for pairing QR
+        if (decodedText.includes('link=')) {
+          isProcessing = true;
+          playBeep('success');
+          
+          // Extract URL and link ID
+          const urlObj = new URL(decodedText);
+          linkId = urlObj.searchParams.get('link');
+          webAppUrl = decodedText.split('?')[0]; // Base URL without query params
+          
+          isPaired = true;
+          document.getElementById('status-text').innerText = "✅ Paired Successfully!";
+          document.getElementById('status-text').style.color = "var(--success)";
+          document.getElementById('status-subtext').innerText = "Now scan student barcodes...";
+          document.getElementById('header-title').innerText = "Barcode Scanner Active";
+          
+          // Briefly pause to show success, then resume scanning for barcodes
+          html5QrcodeScanner.pause();
+          setTimeout(() => {
+            isProcessing = false;
+            html5QrcodeScanner.resume();
+            document.getElementById('status-text').innerText = "Ready to Scan";
+            document.getElementById('status-text').style.color = "var(--primary)";
+          }, 1500);
+        } else {
+          // Scanned something else while pairing
+          playBeep('error');
+          document.getElementById('status-text').innerText = "❌ Invalid QR Code";
+          document.getElementById('status-text').style.color = "#EF4444";
+          setTimeout(() => {
+             document.getElementById('status-text').innerText = "Step 1: Pair Device";
+             document.getElementById('status-text').style.color = "var(--primary)";
+          }, 2000);
+        }
+      } else {
+        // Scanning actual barcodes!
+        isProcessing = true;
+        html5QrcodeScanner.pause();
+        
+        document.getElementById('status-text').innerText = `Sending: ${decodedText}...`;
+        document.getElementById('status-text').style.color = "#F59E0B";
+        
+        sendScanToBackend(decodedText);
+      }
+    }
+
+    function sendScanToBackend(barcode) {
+      // Create a JSONP request to completely bypass CORS
+      const script = document.createElement('script');
+      const callbackName = 'jsonp_callback_' + Math.round(100000 * Math.random());
+      
+      window[callbackName] = function(data) {
+        // Success
+        playBeep('success');
+        document.getElementById('status-text').innerText = `✅ Sent: ${barcode}`;
+        document.getElementById('status-text').style.color = "var(--success)";
+        
+        cleanupRequest();
+      };
+      
+      // Fallback timeout in case request fails (JSONP doesn't have native error handling)
+      const timeoutTimer = setTimeout(() => {
+        playBeep('error');
+        document.getElementById('status-text').innerText = `❌ Network Error. Try again.`;
+        document.getElementById('status-text').style.color = "#EF4444";
+        cleanupRequest();
+      }, 5000);
+      
+      function cleanupRequest() {
+        clearTimeout(timeoutTimer);
+        delete window[callbackName];
+        script.remove();
+        
+        setTimeout(() => {
+          isProcessing = false;
+          if(html5QrcodeScanner.getState() === 3 /* PAUSED */) {
+            html5QrcodeScanner.resume();
+          }
+          document.getElementById('status-text').innerText = "Ready to Scan";
+          document.getElementById('status-text').style.color = "var(--primary)";
+        }, 1500);
+      }
+
+      script.src = `${webAppUrl}?action=scan&linkId=${linkId}&barcode=${encodeURIComponent(barcode)}&callback=${callbackName}`;
+      document.body.appendChild(script);
+    }
+  </script>
+
+</body>
+</html>
