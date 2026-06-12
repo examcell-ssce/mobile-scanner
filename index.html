@@ -149,9 +149,12 @@
       
       html5QrcodeScanner = new Html5Qrcode("reader");
       
-      const config = { fps: 10, qrbox: { width: 250, height: 100 } };
-      // Make qrbox square if pairing, rectangular if scanning barcodes
-      const pairConfig = { fps: 10, qrbox: { width: 200, height: 200 } };
+      // Stage 1: QR Code Pairing Mode (Square Box, Only scans QR)
+      const pairConfig = { 
+        fps: 10, 
+        qrbox: { width: 220, height: 220 },
+        formatsToSupport: [ Html5QrcodeSupportedFormats.QR_CODE ]
+      };
       
       html5QrcodeScanner.start({ facingMode: "environment" }, pairConfig, onScanSuccess)
         .catch(err => {
@@ -177,17 +180,27 @@
           isPaired = true;
           document.getElementById('status-text').innerText = "✅ Paired Successfully!";
           document.getElementById('status-text').style.color = "var(--success)";
-          document.getElementById('status-subtext').innerText = "Now scan student barcodes...";
+          document.getElementById('status-subtext').innerText = "Switching to Barcode Mode...";
           document.getElementById('header-title').innerText = "Barcode Scanner Active";
           
-          // Briefly pause to show success, then resume scanning for barcodes
-          html5QrcodeScanner.pause();
-          setTimeout(() => {
-            isProcessing = false;
-            html5QrcodeScanner.resume();
-            document.getElementById('status-text').innerText = "Ready to Scan";
-            document.getElementById('status-text').style.color = "var(--primary)";
-          }, 1500);
+          // Stop QR Scanner and restart as Barcode Scanner
+          html5QrcodeScanner.stop().then(() => {
+            const barcodeConfig = { 
+              fps: 15, 
+              qrbox: { width: 300, height: 120 }, // Rectangle barcode style
+              formatsToSupport: [ Html5QrcodeSupportedFormats.CODE_128 ] // Restrict to CODE128 for 100% accuracy!
+            };
+            
+            setTimeout(() => {
+              html5QrcodeScanner.start({ facingMode: "environment" }, barcodeConfig, onScanSuccess)
+                .then(() => {
+                  isProcessing = false;
+                  document.getElementById('status-text').innerText = "Ready to Scan Barcodes";
+                  document.getElementById('status-text').style.color = "var(--primary)";
+                  document.getElementById('status-subtext').innerText = "Point at a student barcode to beam it to PC";
+                });
+            }, 500);
+          });
         } else {
           // Scanned something else while pairing
           playBeep('error');
