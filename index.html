@@ -229,44 +229,34 @@
     }
 
     function sendScanToBackend(barcode) {
-      // Create a JSONP request to completely bypass CORS
-      const script = document.createElement('script');
-      const callbackName = 'jsonp_callback_' + Math.round(100000 * Math.random());
+      const targetUrl = `${webAppUrl}?action=scan&linkId=${linkId}&barcode=${encodeURIComponent(barcode)}`;
       
-      window[callbackName] = function(data) {
-        // Success
-        playBeep('success');
-        document.getElementById('status-text').innerText = `✅ Sent: ${barcode}`;
-        document.getElementById('status-text').style.color = "var(--success)";
-        
-        cleanupRequest();
-      };
-      
-      // Fallback timeout in case request fails (JSONP doesn't have native error handling)
-      const timeoutTimer = setTimeout(() => {
-        playBeep('error');
-        document.getElementById('status-text').innerText = `❌ Network Error. Try again.`;
-        document.getElementById('status-text').style.color = "#EF4444";
-        cleanupRequest();
-      }, 5000);
-      
-      function cleanupRequest() {
-        clearTimeout(timeoutTimer);
-        delete window[callbackName];
-        script.remove();
-        
+      // We use mode 'no-cors' so Brave Browser/Safari doesn't block the cross-origin request.
+      // With 'no-cors', we can't read the response, but it successfully hits the backend!
+      fetch(targetUrl, { mode: 'no-cors' })
+        .then(() => {
+          playBeep('success');
+          document.getElementById('status-text').innerText = `✅ Sent: ${barcode}`;
+          document.getElementById('status-text').style.color = "var(--success)";
+          resumeScanning();
+        })
+        .catch(err => {
+          playBeep('error');
+          document.getElementById('status-text').innerText = `❌ Network Error. Check connection.`;
+          document.getElementById('status-text').style.color = "#EF4444";
+          resumeScanning();
+        });
+
+      function resumeScanning() {
         setTimeout(() => {
           isProcessing = false;
           if(html5QrcodeScanner.getState() === 3 /* PAUSED */) {
             html5QrcodeScanner.resume();
           }
-          document.getElementById('status-text').innerText = "Ready to Scan";
+          document.getElementById('status-text').innerText = "Ready to Scan Barcodes";
           document.getElementById('status-text').style.color = "var(--primary)";
-        }, 1500);
+        }, 1200);
       }
-
-      script.src = `${webAppUrl}?action=scan&linkId=${linkId}&barcode=${encodeURIComponent(barcode)}&callback=${callbackName}`;
-      document.body.appendChild(script);
     }
   </script>
 
