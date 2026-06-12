@@ -199,6 +199,11 @@
           }, 2000);
         }
       } else {
+        // Prevent re-scanning the PC pairing QR code!
+        if (decodedText.includes('script.google.com') && decodedText.includes('link=')) {
+          return; // Ignore the QR code entirely
+        }
+        
         // Scanning actual barcodes!
         isProcessing = true;
         html5QrcodeScanner.pause();
